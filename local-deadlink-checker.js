@@ -51,6 +51,15 @@ if (!String.prototype.endsWith) {
 }
 
 /**
+ * backport of 'includes' implementation for old JavaScript.
+ */
+if (!String.prototype.includes) {
+    String.prototype.includes = function(searchString) {
+        return this.indexOf(searchString) !== -1
+    }
+}
+
+/**
  * get all the files under the directory recursively.
  */
 function enumFiles(dirPath) {
@@ -117,11 +126,35 @@ function readFile(filePath) {
 }
 
 /**
+ * get line numbers where 'searchString' is contained
+ * in given multi-line whole text.
+ */
+function getLineNumbers(wholeText, searchString) {
+    var regex = /(?!<.*)\"(?=[^<]*>)/g;
+
+    var searchStringLowerCase = searchString
+        .toLowerCase()
+        .replace(regex, "\'");
+
+    var lineNumbers = [];
+    var lines = wholeText.split(/\n/);
+    for (var i = 0, len = lines.length; i < len; i++) {
+        var line = lines[i].toLowerCase().replace(regex, "\'");
+        if (line.includes(searchStringLowerCase)) {
+            lineNumbers.push(i+1);
+        }
+    }
+
+    return lineNumbers;
+}
+
+/**
  * get all the links written in the file.
  */
 function checkAllLinks(filePath) {
+    var wholeText = readFile(filePath);
     var document = new ActiveXObject("htmlfile");
-    document.write(readFile(filePath));
+    document.write(wholeText);
 
     var wholeDocument = document.getElementsByTagName("html")[0];
 
@@ -130,15 +163,15 @@ function checkAllLinks(filePath) {
         for (var i = 0, len = elements.length; i < len; i++) {
             var element = elements[i];
 
-            // line number todo:
-            var lineIndex = 0;
-
             var regex = new RegExp(attrName + "=\"([^\"]*)");
             var link = element.outerHTML.match(regex)[1];
 
+            // line number todo:
+            var lineIndices = getLineNumbers(wholeText, element.outerHTML);
+
             var status = getLinkStatus(link);
             var msg = (status === "NG" ? "  !!" : "    ")
-                + "[" + status + "] Line " + lineIndex + ": " + element.outerHTML;
+                + "[" + status + "] Line " + lineIndices + ": " + element.outerHTML;
 
             // output to stdout.
             stdout(msg);
@@ -294,8 +327,8 @@ var dateString = now.getFullYear()
     + format2d(now.getMinutes())
     + format2d(now.getSeconds());
 
-var baseName = sho.specialFolders("Desktop") + "/"
-    + dateString + "_" + fso.getFolder(currentDirectory).name;
+var baseName = fso.buildPath(sho.specialFolders("Desktop"),
+                             dateString + "_" + fso.getFolder(currentDirectory).name);
 
 var outputFileForWWW = baseName + "_www.txt";
 createFile(outputFileForWWW);

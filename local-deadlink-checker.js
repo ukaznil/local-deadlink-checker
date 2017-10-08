@@ -67,12 +67,12 @@ function enumFiles(dirPath) {
     var result = [];
     var dir = fso.getFolder(dirPath);
 
-    // proceed for files
+    // proceed to all files.
     var e1 = new Enumerator(dir.files);
     for (e1.moveFirst(); !e1.atEnd(); e1.moveNext()) {
         var file = e1.item();
 
-        // check ext
+        // check ext.
         for (var i in validExts) {
             if (file.path.endsWith(validExts[i])) {
                 result.push(file.path);
@@ -81,7 +81,7 @@ function enumFiles(dirPath) {
         }
     }
 
-    // proceed for dirs
+    // proceed to all dirs.
     var e2 = new Enumerator(dir.subFolders);
     for (e2.moveFirst(); !e2.atEnd(); e2.moveNext()) {
         var files = enumFiles(e2.item());
@@ -137,7 +137,7 @@ function checkAllLinks(filePath) {
             var link = element.outerHTML.match(regex)[1];
 
             var status = getLinkStatus(link);
-            var msg = (status === "NG" ? "    !!" : "      ")
+            var msg = (status === "NG" ? "  !!" : "    ")
                 + "[" + status + "] Line " + lineIndex + ": " + element.outerHTML;
 
             // output to stdout.
@@ -281,6 +281,9 @@ function destroyObjects() {
 var sho = new ActiveXObject("WScript.Shell");
 var fso = new ActiveXObject("Scripting.FileSystemObject");
 
+// get current directory as the target directory.
+var currentDirectory = sho.currentDirectory;
+
 // prepare specific files where the result will be written.
 var now = new Date();
 var dateString = now.getFullYear()
@@ -291,15 +294,15 @@ var dateString = now.getFullYear()
     + format2d(now.getMinutes())
     + format2d(now.getSeconds());
 
-var outputFileForWWW = dateString + "_www.txt";
-createFile(outputFileForWWW);
-var outputFileForOK = dateString + "_ok.txt";
-createFile(outputFileForOK);
-var outputFileForNG = dateString + "_ng.txt";
-createFile(outputFileForNG);
+var baseName = sho.specialFolders("Desktop") + "/"
+    + dateString + "_" + fso.getFolder(currentDirectory).name;
 
-// get current directory as the target directory.
-var currentDirectory = sho.currentDirectory;
+var outputFileForWWW = baseName + "_www.txt";
+createFile(outputFileForWWW);
+var outputFileForOK = baseName + "_ok.txt";
+createFile(outputFileForOK);
+var outputFileForNG = baseName + "_ng.txt";
+createFile(outputFileForNG);
 
 // display basic information.
 stdout();
@@ -330,7 +333,7 @@ for (var i in filePaths) {
 
     checkAllLinks(filePath);
 
-    stdout("");
+    stdout();
     appendToFile(outputFileForOK, "");
     appendToFile(outputFileForNG, "");
     appendToFile(outputFileForWWW, "");
@@ -338,3 +341,9 @@ for (var i in filePaths) {
 
 // release object.
 destroyObjects();
+
+// all done.
+stdout();
+stdout("*** all the tasks have been done !! ***")
+stdout("*** please follow the prompt message to quit this program. ***");
+stdout();

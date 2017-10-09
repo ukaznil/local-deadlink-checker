@@ -29,7 +29,8 @@ function echo(str) {
  * output String to stdout.
  */
 function stdout(str) {
-    WScript.StdOut.writeLine(str);
+    var str = typeof str !== 'undefined' ? str : "";
+    WScript.StdOut.writeLine("" + str);
 }
 
 /**
@@ -179,13 +180,13 @@ function checkAllLinks(filePath) {
             // output to corresponding files.
             switch(status) {
             case "OK":
-                appendToFile(outputFileForOK, msg);
+                appendToFile(outputFileForOK.path, msg);
                 break;
             case "NG":
-                appendToFile(outputFileForNG, msg);
+                appendToFile(outputFileForNG.path, msg);
                 break;
             case "--":
-                appendToFile(outputFileForWWW, msg);
+                appendToFile(outputFileForWWW.path, msg);
                 break;
             default:
                 echo("Unknown error.");
@@ -237,13 +238,15 @@ function createFile(filePath) {
         // abort
         echo("-- ABORT --\n\n"
              + "the following file does already exist.\n"
-             + getLongPath(filePath));
+             + filePath);
         destroyObjects();
         WScript.quit();
     }
 
     var file = fso.createTextFile(filePath, overwrite = false);
     file.close();
+
+    return fso.getFile(filePath);
 }
 
 /**
@@ -255,7 +258,7 @@ function appendToFile(filePath, text) {
         // abort
         echo("ABORT\n\n"
              + "the following file does NOT already exist.\n"
-             + getLongPath(filePath));
+             + filePath);
         destroyObjects();
         WScript.quit();
     }
@@ -277,22 +280,6 @@ function appendToFile(filePath, text) {
 }
 
 /**
- * get file path in short format.
- */
-function getShortPath(filePath) {
-    var file = fso.getFile(filePath);
-    return file.shortPath;
-}
-
-/**
- * get file path in long format.
- */
-function getLongPath(filePath) {
-    var file = fso.getFile(filePath);
-    return file.path;
-}
-
-/**
  * release several ActiveXObject(s).
  * this method should be called only when this program exits.
  */
@@ -310,73 +297,79 @@ function destroyObjects() {
 //                                      //
 //////////////////////////////////////////
 
-// initialize several ActiveXObject(s).
-var sho = new ActiveXObject("WScript.Shell");
-var fso = new ActiveXObject("Scripting.FileSystemObject");
+// global variables
+var sho, fso;
+var outputFileForOK, outputFileForNG, outputFileForWWW;
 
-// get current directory as the target directory.
-var currentDirectory = sho.currentDirectory;
+function main() {
+    // initialize several ActiveXObject(s).
+    sho = new ActiveXObject("WScript.Shell");
+    fso = new ActiveXObject("Scripting.FileSystemObject");
 
-// prepare specific files where the result will be written.
-var now = new Date();
-var dateString = now.getFullYear()
-    + format2d(now.getMonth()+1)
-    + format2d(now.getDate())
-    + "-"
-    + format2d(now.getHours())
-    + format2d(now.getMinutes())
-    + format2d(now.getSeconds());
+    // get current directory as the target directory.
+    var currentDirectory = sho.currentDirectory;
 
-var baseName = fso.buildPath(sho.specialFolders("Desktop"),
-                             dateString + "_" + fso.getFolder(currentDirectory).name);
+    // prepare specific files where the result will be written.
+    var now = new Date();
+    var dateString = now.getFullYear()
+        + format2d(now.getMonth()+1)
+        + format2d(now.getDate())
+        + "-"
+        + format2d(now.getHours())
+        + format2d(now.getMinutes())
+        + format2d(now.getSeconds());
 
-var outputFileForWWW = baseName + "_www.txt";
-createFile(outputFileForWWW);
-var outputFileForOK = baseName + "_ok.txt";
-createFile(outputFileForOK);
-var outputFileForNG = baseName + "_ng.txt";
-createFile(outputFileForNG);
+    var baseName = fso.buildPath(sho.specialFolders("Desktop"),
+                                 dateString + "_" + fso.getFolder(currentDirectory).name);
 
-// display basic information.
-stdout();
-stdout("********************************************************");
-stdout("  [local alive links] - OK cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForOK));
-stdout()
-stdout("  [local dead links] - NG cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForNG));
-stdout();
-stdout("  [links to \"The Internet\"] - Other cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForWWW));
-stdout("********************************************************");
-stdout();
+    outputFileForOK = createFile(baseName + "_ok.txt");
+    outputFileForNG = createFile(baseName + "_ng.txt");
+    outputFileForWWW = createFile(baseName + "_www.txt");
 
-// get all files recursively.
-var filePaths = enumFiles(currentDirectory);
-
-// check DEAD-LINKs per each file.
-for (var i in filePaths) {
-    var filePath = filePaths[i];
-    var msg = "--- " + filePath + " ---";
-
-    stdout(msg);
-    appendToFile(outputFileForOK, msg);
-    appendToFile(outputFileForNG, msg);
-    appendToFile(outputFileForWWW, msg);
-
-    checkAllLinks(filePath);
-
+    // display basic information.
     stdout();
-    appendToFile(outputFileForOK, "");
-    appendToFile(outputFileForNG, "");
-    appendToFile(outputFileForWWW, "");
+    stdout("********************************************************");
+    stdout("  [local alive links] - OK cases will be output in this file:");
+    stdout("    " + outputFileForOK.path);
+    stdout()
+    stdout("  [local dead links] - NG cases will be output in this file:");
+    stdout("    " + outputFileForNG.path);
+    stdout();
+    stdout("  [links to \"The Internet\"] - Other cases will be output in this file:");
+    stdout("    " + outputFileForWWW.path);
+    stdout("********************************************************");
+    stdout();
+
+    // get all files recursively.
+    var filePaths = enumFiles(currentDirectory);
+
+    // check DEAD-LINKs per each file.
+    for (var i in filePaths) {
+        var filePath = filePaths[i];
+        var msg = "--- " + filePath + " ---";
+
+        stdout(msg);
+        appendToFile(outputFileForOK.path, msg);
+        appendToFile(outputFileForNG.path, msg);
+        appendToFile(outputFileForWWW.path, msg);
+
+        checkAllLinks(filePath);
+
+        stdout();
+        appendToFile(outputFileForOK.path, "");
+        appendToFile(outputFileForNG.path, "");
+        appendToFile(outputFileForWWW.path, "");
+    }
+
+    // release object.
+    destroyObjects();
+
+    // all done.
+    stdout();
+    stdout("*** all the tasks have been done !! ***")
+    stdout("*** please follow the prompt message to quit this program. ***");
+    stdout();
 }
 
-// release object.
-destroyObjects();
-
-// all done.
-stdout();
-stdout("*** all the tasks have been done !! ***")
-stdout("*** please follow the prompt message to quit this program. ***");
-stdout();
+// execute the main function.
+main();

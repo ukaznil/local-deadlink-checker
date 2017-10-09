@@ -29,7 +29,8 @@ function echo(str) {
  * output String to stdout.
  */
 function stdout(str) {
-    WScript.StdOut.writeLine(str);
+    var str = typeof str !== 'undefined' ? str : "";
+    WScript.StdOut.writeLine("" + str);
 }
 
 /**
@@ -51,6 +52,15 @@ if (!String.prototype.endsWith) {
 }
 
 /**
+ * backport of 'includes' implementation for old JavaScript.
+ */
+if (!String.prototype.includes) {
+    String.prototype.includes = function(searchString) {
+        return this.indexOf(searchString) !== -1
+    }
+}
+
+/**
  * get all the files under the directory recursively.
  */
 function enumFiles(dirPath) {
@@ -67,12 +77,12 @@ function enumFiles(dirPath) {
     var result = [];
     var dir = fso.getFolder(dirPath);
 
-    // proceed for files
+    // proceed to all files.
     var e1 = new Enumerator(dir.files);
     for (e1.moveFirst(); !e1.atEnd(); e1.moveNext()) {
         var file = e1.item();
 
-        // check ext
+        // check ext.
         for (var i in validExts) {
             if (file.path.endsWith(validExts[i])) {
                 result.push(file.path);
@@ -81,7 +91,7 @@ function enumFiles(dirPath) {
         }
     }
 
-    // proceed for dirs
+    // proceed to all dirs.
     var e2 = new Enumerator(dir.subFolders);
     for (e2.moveFirst(); !e2.atEnd(); e2.moveNext()) {
         var files = enumFiles(e2.item());
@@ -117,11 +127,35 @@ function readFile(filePath) {
 }
 
 /**
+ * get line numbers where 'searchString' is contained
+ * in given multi-line whole text.
+ */
+function getLineNumbers(wholeText, searchString) {
+    var regex = /(?!<.*)\"(?=[^<]*>)/g;
+
+    var searchStringLowerCase = searchString
+        .toLowerCase()
+        .replace(regex, "\'");
+
+    var lineNumbers = [];
+    var lines = wholeText.split(/\n/);
+    for (var i = 0, len = lines.length; i < len; i++) {
+        var line = lines[i].toLowerCase().replace(regex, "\'");
+        if (line.includes(searchStringLowerCase)) {
+            lineNumbers.push(i+1);
+        }
+    }
+
+    return lineNumbers;
+}
+
+/**
  * get all the links written in the file.
  */
 function checkAllLinks(filePath) {
+    var wholeText = readFile(filePath);
     var document = new ActiveXObject("htmlfile");
-    document.write(readFile(filePath));
+    document.write(wholeText);
 
     var wholeDocument = document.getElementsByTagName("html")[0];
 
@@ -130,15 +164,15 @@ function checkAllLinks(filePath) {
         for (var i = 0, len = elements.length; i < len; i++) {
             var element = elements[i];
 
-            // line number todo:
-            var lineIndex = 0;
-
             var regex = new RegExp(attrName + "=\"([^\"]*)");
             var link = element.outerHTML.match(regex)[1];
 
+            // line number todo:
+            var lineIndices = getLineNumbers(wholeText, element.outerHTML);
+
             var status = getLinkStatus(link);
-            var msg = (status === "NG" ? "    !!" : "      ")
-                + "[" + status + "] Line " + lineIndex + ": " + element.outerHTML;
+            var msg = (status === "NG" ? "  !!" : "    ")
+                + "[" + status + "] Line " + lineIndices + ": " + element.outerHTML;
 
             // output to stdout.
             stdout(msg);
@@ -146,13 +180,13 @@ function checkAllLinks(filePath) {
             // output to corresponding files.
             switch(status) {
             case "OK":
-                appendToFile(outputFileForOK, msg);
+                appendToFile(outputFileForOK.path, msg);
                 break;
             case "NG":
-                appendToFile(outputFileForNG, msg);
+                appendToFile(outputFileForNG.path, msg);
                 break;
             case "--":
-                appendToFile(outputFileForWWW, msg);
+                appendToFile(outputFileForWWW.path, msg);
                 break;
             default:
                 echo("Unknown error.");
@@ -204,13 +238,15 @@ function createFile(filePath) {
         // abort
         echo("-- ABORT --\n\n"
              + "the following file does already exist.\n"
-             + getLongPath(filePath));
+             + filePath);
         destroyObjects();
         WScript.quit();
     }
 
     var file = fso.createTextFile(filePath, overwrite = false);
     file.close();
+
+    return fso.getFile(filePath);
 }
 
 /**
@@ -222,7 +258,7 @@ function appendToFile(filePath, text) {
         // abort
         echo("ABORT\n\n"
              + "the following file does NOT already exist.\n"
-             + getLongPath(filePath));
+             + filePath);
         destroyObjects();
         WScript.quit();
     }
@@ -244,22 +280,6 @@ function appendToFile(filePath, text) {
 }
 
 /**
- * get file path in short format.
- */
-function getShortPath(filePath) {
-    var file = fso.getFile(filePath);
-    return file.shortPath;
-}
-
-/**
- * get file path in long format.
- */
-function getLongPath(filePath) {
-    var file = fso.getFile(filePath);
-    return file.path;
-}
-
-/**
  * release several ActiveXObject(s).
  * this method should be called only when this program exits.
  */
@@ -277,64 +297,79 @@ function destroyObjects() {
 //                                      //
 //////////////////////////////////////////
 
-// initialize several ActiveXObject(s).
-var sho = new ActiveXObject("WScript.Shell");
-var fso = new ActiveXObject("Scripting.FileSystemObject");
+// global variables
+var sho, fso;
+var outputFileForOK, outputFileForNG, outputFileForWWW;
 
-// prepare specific files where the result will be written.
-var now = new Date();
-var dateString = now.getFullYear()
-    + format2d(now.getMonth()+1)
-    + format2d(now.getDate())
-    + "-"
-    + format2d(now.getHours())
-    + format2d(now.getMinutes())
-    + format2d(now.getSeconds());
+function main() {
+    // initialize several ActiveXObject(s).
+    sho = new ActiveXObject("WScript.Shell");
+    fso = new ActiveXObject("Scripting.FileSystemObject");
 
-var outputFileForWWW = dateString + "_www.txt";
-createFile(outputFileForWWW);
-var outputFileForOK = dateString + "_ok.txt";
-createFile(outputFileForOK);
-var outputFileForNG = dateString + "_ng.txt";
-createFile(outputFileForNG);
+    // get current directory as the target directory.
+    var currentDirectory = sho.currentDirectory;
 
-// get current directory as the target directory.
-var currentDirectory = sho.currentDirectory;
+    // prepare specific files where the result will be written.
+    var now = new Date();
+    var dateString = now.getFullYear()
+        + format2d(now.getMonth()+1)
+        + format2d(now.getDate())
+        + "-"
+        + format2d(now.getHours())
+        + format2d(now.getMinutes())
+        + format2d(now.getSeconds());
 
-// display basic information.
-stdout();
-stdout("********************************************************");
-stdout("  [local alive links] - OK cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForOK));
-stdout()
-stdout("  [local dead links] - NG cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForNG));
-stdout();
-stdout("  [links to \"The Internet\"] - Other cases will be output in this file:");
-stdout("    " + getLongPath(outputFileForWWW));
-stdout("********************************************************");
-stdout();
+    var baseName = fso.buildPath(sho.specialFolders("Desktop"),
+                                 dateString + "_" + fso.getFolder(currentDirectory).name);
 
-// get all files recursively.
-var filePaths = enumFiles(currentDirectory);
+    outputFileForOK = createFile(baseName + "_ok.txt");
+    outputFileForNG = createFile(baseName + "_ng.txt");
+    outputFileForWWW = createFile(baseName + "_www.txt");
 
-// check DEAD-LINKs per each file.
-for (var i in filePaths) {
-    var filePath = filePaths[i];
-    var msg = "--- " + filePath + " ---";
+    // display basic information.
+    stdout();
+    stdout("********************************************************");
+    stdout("  [local alive links] - OK cases will be output in this file:");
+    stdout("    " + outputFileForOK.path);
+    stdout()
+    stdout("  [local dead links] - NG cases will be output in this file:");
+    stdout("    " + outputFileForNG.path);
+    stdout();
+    stdout("  [links to \"The Internet\"] - Other cases will be output in this file:");
+    stdout("    " + outputFileForWWW.path);
+    stdout("********************************************************");
+    stdout();
 
-    stdout(msg);
-    appendToFile(outputFileForOK, msg);
-    appendToFile(outputFileForNG, msg);
-    appendToFile(outputFileForWWW, msg);
+    // get all files recursively.
+    var filePaths = enumFiles(currentDirectory);
 
-    checkAllLinks(filePath);
+    // check DEAD-LINKs per each file.
+    for (var i in filePaths) {
+        var filePath = filePaths[i];
+        var msg = "--- " + filePath + " ---";
 
-    stdout("");
-    appendToFile(outputFileForOK, "");
-    appendToFile(outputFileForNG, "");
-    appendToFile(outputFileForWWW, "");
+        stdout(msg);
+        appendToFile(outputFileForOK.path, msg);
+        appendToFile(outputFileForNG.path, msg);
+        appendToFile(outputFileForWWW.path, msg);
+
+        checkAllLinks(filePath);
+
+        stdout();
+        appendToFile(outputFileForOK.path, "");
+        appendToFile(outputFileForNG.path, "");
+        appendToFile(outputFileForWWW.path, "");
+    }
+
+    // release object.
+    destroyObjects();
+
+    // all done.
+    stdout();
+    stdout("*** all the tasks have been done !! ***")
+    stdout("*** please follow the prompt message to quit this program. ***");
+    stdout();
 }
 
-// release object.
-destroyObjects();
+// execute the main function.
+main();

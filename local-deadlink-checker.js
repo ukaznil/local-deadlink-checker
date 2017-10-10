@@ -101,6 +101,9 @@ function enumFiles(dirPath) {
     return result;
 }
 
+/**
+ * read all text from a file.
+ */
 function readFile(filePath) {
     // iomode
     var ForReading = 1;
@@ -127,29 +130,6 @@ function readFile(filePath) {
 }
 
 /**
- * get line numbers where 'searchString' is contained
- * in given multi-line whole text.
- */
-function getLineNumbers(wholeText, searchString) {
-    var regex = /(?!<.*)\"(?=[^<]*>)/g;
-
-    var searchStringLowerCase = searchString
-        .toLowerCase()
-        .replace(regex, "\'");
-
-    var lineNumbers = [];
-    var lines = wholeText.split(/\n/);
-    for (var i = 0, len = lines.length; i < len; i++) {
-        var line = lines[i].toLowerCase().replace(regex, "\'");
-        if (line.includes(searchStringLowerCase)) {
-            lineNumbers.push(i+1);
-        }
-    }
-
-    return lineNumbers;
-}
-
-/**
  * get all the links written in the file.
  */
 function checkAllLinks(filePath) {
@@ -165,34 +145,35 @@ function checkAllLinks(filePath) {
             var element = elements[i];
 
             var regex = new RegExp(attrName + "=\"([^\"]*)");
-            var link = element.outerHTML.match(regex)[1];
+            var matched = element.outerHTML.match(regex);
 
-            // line number todo:
-            var lineIndices = getLineNumbers(wholeText, element.outerHTML);
+            if (matched !== null){
+                var link = matched[1].replace(/&amp;/g, "&");
 
-            var status = getLinkStatus(link);
-            var msg = (status === "NG" ? "  !!" : "    ")
-                + "[" + status + "] Line " + lineIndices + ": " + element.outerHTML;
+                var status = getLinkStatus(filePath, link);
+                var msg = (status === "NG" ? "  !!" : "    ")
+                    + "[" + status + "] " + element.outerHTML.replace(/&amp;/g, "&");
 
-            // output to stdout.
-            stdout(msg);
+                // output to stdout.
+                stdout(msg);
 
-            // output to corresponding files.
-            switch(status) {
-            case "OK":
-                appendToFile(outputFileForOK.path, msg);
-                break;
-            case "NG":
-                appendToFile(outputFileForNG.path, msg);
-                break;
-            case "--":
-                appendToFile(outputFileForWWW.path, msg);
-                break;
-            default:
-                echo("Unknown error.");
-                destroyObjects();
-                WScript.quit();
-                break;
+                // output to corresponding files.
+                switch(status) {
+                case "OK":
+                    appendToFile(outputFileForOK.path, msg);
+                    break;
+                case "NG":
+                    appendToFile(outputFileForNG.path, msg);
+                    break;
+                case "--":
+                    appendToFile(outputFileForWWW.path, msg);
+                    break;
+                default:
+                    echo("Unknown error.");
+                    destroyObjects();
+                    WScript.quit();
+                    break;
+                }
             }
         }
     }
@@ -206,13 +187,15 @@ function checkAllLinks(filePath) {
 /**
  * check whether the link is dead or alive.
  */
-function getLinkStatus(link) {
+function getLinkStatus(filePath, link) {
     if (link.startsWith("http://") ||
         link.startsWith("https://") ||
-        link.startsWith("//")) {
+        link.startsWith("//") ||
+        link.startsWith("mailto:")) {
         var status = "--";
     } else {
-        var status = fso.fileExists(link) ? "OK" : "NG";
+        var path = fso.buildPath(fso.getParentFolderName(filePath), link);
+        var status = fso.fileExists(path) ? "OK" : "NG";
     }
 
     return status;
